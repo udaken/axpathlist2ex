@@ -442,7 +442,7 @@ static int iterateArchive(LPCSTR buf, TCallback callback)
 	return SPI_SUCCESS;
 }
 
-static fileInfo findData2FileInfo(Context context, size_t index, const WIN32_FIND_DATA &fad)
+static fileInfo findData2FileInfo(Context &context, size_t index, const WIN32_FIND_DATA &fad)
 {
 	ULARGE_INTEGER uli = { fad.ftLastWriteTime.dwLowDateTime, fad.ftLastWriteTime.dwHighDateTime };
 	time_t		timestamp = (time_t)((uli.QuadPart - 0x19DB1DED53E8000) / 10000000);
@@ -483,7 +483,7 @@ int __stdcall GetArchiveInfo(LPCSTR buf, long len, unsigned int flag, HLOCAL * l
 	try
 	{
 		std::vector<fileInfo> list;
-		int ret = iterateArchive(buf, [&](Context context, size_t index, const std::wstring &parent, const WIN32_FIND_DATA &fad)
+		int ret = iterateArchive(buf, [&](Context &context, size_t index, const std::wstring &parent, const WIN32_FIND_DATA &fad)
 		{
 			list.push_back(findData2FileInfo(context, index, fad));
 
@@ -513,7 +513,7 @@ int __stdcall GetFileInfo(LPCSTR buf, long len, LPSTR filename, unsigned int fla
 
 	try
 	{
-		int ret = iterateArchive(buf, [&](Context context, size_t index, const std::wstring &parent, const WIN32_FIND_DATA &fad)
+		int ret = iterateArchive(buf, [&](Context &context, size_t index, const std::wstring &parent, const WIN32_FIND_DATA &fad)
 		{
 			auto position = 0;
 			if (context.useFileName)
@@ -549,7 +549,7 @@ static BOOL readAllBytes(LPCWSTR path, LPVOID data, SIZE_T size)
 	{
 		return FALSE;
 	}
-	
+
 	DWORD dwNumberOfBytesRead;
 	if (!::ReadFile(hFile, data, size, &dwNumberOfBytesRead, nullptr) || dwNumberOfBytesRead != dwNumberOfBytesRead)
 	{
@@ -573,7 +573,7 @@ int __stdcall GetFile(LPCSTR buf, long len, LPSTR dest, unsigned int flag, FARPR
 		size_t position = len;
 		int ret = SPI_INTERNAL_ERR;
 
-		iterateArchive(buf, [&](Context context, size_t index, const std::wstring &parent, const WIN32_FIND_DATA &fad)
+		iterateArchive(buf, [&](Context &context, size_t index, const std::wstring &parent, const WIN32_FIND_DATA &fad)
 		{
 			if (index != position)
 			{
@@ -590,7 +590,7 @@ int __stdcall GetFile(LPCSTR buf, long len, LPSTR dest, unsigned int flag, FARPR
 					ret = SPI_NO_MEMORY;
 					return Action::Break;
 				}
-				
+
 				HLOCAL hBuf = ::LocalAlloc(LPTR, fad.nFileSizeLow);
 				if (hBuf == nullptr)
 				{
@@ -611,9 +611,8 @@ int __stdcall GetFile(LPCSTR buf, long len, LPSTR dest, unsigned int flag, FARPR
 			else // ディスクファイル 
 			{
 				WCHAR newPath[MAX_PATH];
-
 				LPCWSTR ext = ::PathFindExtension(fad.cFileName);
-				swprintf_s(newPath, L"%S\\%09u%S", dest, index + 1, ext ? ext : L"");
+				swprintf_s(newPath, L"%S\\%09u%s", dest, index + 1, ext ? ext : L"");
 
 				ret = ::CopyFile(path, newPath, FALSE) ? SPI_SUCCESS : SPI_FILE_READ_ERR;
 			}
