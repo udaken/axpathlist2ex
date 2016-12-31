@@ -137,6 +137,9 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <ModuleDefinitionFile>axpathlist2ex.def</ModuleDefinitionFile>
     </Link>
+    <PostBuildEvent>
+      <Command>lzma e "$(OutDir)$(TargetName).pdb" "$(OutDir)$(TargetName).pdb.lzma"</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
