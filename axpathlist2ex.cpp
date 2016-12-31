@@ -1,4 +1,4 @@
-#include "stdafx.h"
+ï»¿#include "stdafx.h"
 
 #include <windows.h>
 #include <comip.h>
@@ -121,29 +121,29 @@ T *strnchr(const T *s, size_t count, T c)
 	}
 	return nullptr;
 }
-// ƒGƒ‰[ƒR[ƒh
-#define SPI_SUCCESS			0		// ³íI—¹
-#define SPI_NOT_IMPLEMENT	(-1)	// ‚»‚Ì‹@”\‚ÍƒCƒ“ƒvƒŠƒƒ“ƒg‚³‚ê‚Ä‚¢‚È‚¢
-#define SPI_USER_CANCEL		1		// ƒR[ƒ‹ƒoƒbƒNŠÖ”‚ª”ñ0‚ğ•Ô‚µ‚½‚Ì‚Å“WŠJ‚ğ’†~‚µ‚½
-#define SPI_UNKNOWN_FORMAT	2		// –¢’m‚ÌƒtƒH[ƒ}ƒbƒg
-#define SPI_DATA_BROKEN		3		// ƒf[ƒ^‚ª‰ó‚ê‚Ä‚¢‚é
-#define SPI_NO_MEMORY		4		// ƒƒ‚ƒŠ[‚ªŠm•Ûo—ˆ‚È‚¢
-#define SPI_MEMORY_ERR		5		// ƒƒ‚ƒŠ[ƒGƒ‰[iLocko—ˆ‚È‚¢A“™j
-#define SPI_FILE_READ_ERR	6		// ƒtƒ@ƒCƒ‹ƒŠ[ƒhƒGƒ‰[
-#define SPI_RESERVED_ERR	7		// i—\–ñj
-#define SPI_INTERNAL_ERR	8		// “à•”ƒGƒ‰[
+// ã‚¨ãƒ©ãƒ¼ã‚³ãƒ¼ãƒ‰
+#define SPI_SUCCESS			0		// æ­£å¸¸çµ‚äº†
+#define SPI_NOT_IMPLEMENT	(-1)	// ãã®æ©Ÿèƒ½ã¯ã‚¤ãƒ³ãƒ—ãƒªãƒ¡ãƒ³ãƒˆã•ã‚Œã¦ã„ãªã„
+#define SPI_USER_CANCEL		1		// ã‚³ãƒ¼ãƒ«ãƒãƒƒã‚¯é–¢æ•°ãŒé0ã‚’è¿”ã—ãŸã®ã§å±•é–‹ã‚’ä¸­æ­¢ã—ãŸ
+#define SPI_UNKNOWN_FORMAT	2		// æœªçŸ¥ã®ãƒ•ã‚©ãƒ¼ãƒãƒƒãƒˆ
+#define SPI_DATA_BROKEN		3		// ãƒ‡ãƒ¼ã‚¿ãŒå£Šã‚Œã¦ã„ã‚‹
+#define SPI_NO_MEMORY		4		// ãƒ¡ãƒ¢ãƒªãƒ¼ãŒç¢ºä¿å‡ºæ¥ãªã„
+#define SPI_MEMORY_ERR		5		// ãƒ¡ãƒ¢ãƒªãƒ¼ã‚¨ãƒ©ãƒ¼ï¼ˆLockå‡ºæ¥ãªã„ã€ç­‰ï¼‰
+#define SPI_FILE_READ_ERR	6		// ãƒ•ã‚¡ã‚¤ãƒ«ãƒªãƒ¼ãƒ‰ã‚¨ãƒ©ãƒ¼
+#define SPI_RESERVED_ERR	7		// ï¼ˆäºˆç´„ï¼‰
+#define SPI_INTERNAL_ERR	8		// å†…éƒ¨ã‚¨ãƒ©ãƒ¼
 
 #include <pshpack1.h>
-// ƒtƒ@ƒCƒ‹î•ñ\‘¢‘Ì
+// ãƒ•ã‚¡ã‚¤ãƒ«æƒ…å ±æ§‹é€ ä½“
 struct fileInfo
 {
-	unsigned char	method[8];		// ˆ³k–@‚Ìí—Ş
-	unsigned long	position;		// ƒtƒ@ƒCƒ‹ã‚Å‚ÌˆÊ’u
-	unsigned long	compsize;		// ˆ³k‚³‚ê‚½ƒTƒCƒY
-	unsigned long	filesize;		// Œ³‚Ìƒtƒ@ƒCƒ‹ƒTƒCƒY
-	time_t			timestamp;		// ƒtƒ@ƒCƒ‹‚ÌXV“ú
-	char			path[200];		// ‘Š‘ÎƒpƒX
-	char			filename[200];	// ƒtƒ@ƒCƒ‹ƒl[ƒ€
+	unsigned char	method[8];		// åœ§ç¸®æ³•ã®ç¨®é¡
+	unsigned long	position;		// ãƒ•ã‚¡ã‚¤ãƒ«ä¸Šã§ã®ä½ç½®
+	unsigned long	compsize;		// åœ§ç¸®ã•ã‚ŒãŸã‚µã‚¤ã‚º
+	unsigned long	filesize;		// å…ƒã®ãƒ•ã‚¡ã‚¤ãƒ«ã‚µã‚¤ã‚º
+	time_t			timestamp;		// ãƒ•ã‚¡ã‚¤ãƒ«ã®æ›´æ–°æ—¥æ™‚
+	char			path[200];		// ç›¸å¯¾ãƒ‘ã‚¹
+	char			filename[200];	// ãƒ•ã‚¡ã‚¤ãƒ«ãƒãƒ¼ãƒ 
 	unsigned long	crc;			// CRC
 };
 #include <poppack.h>
@@ -318,9 +318,9 @@ int __stdcall IsSupported(LPSTR filename, DWORD dw)
 		{
 			return TRUE;
 		}
-#if 0	// Šg’£q‚É‚©‚©‚í‚ç‚¸IsSupported()‚ªƒR[ƒ‹‚³‚ê‚é‚ÆA³‚µ‚­”»’è‚Å‚«‚È‚¢‚Ì‚Å•¶šƒR[ƒh‚Ì”»’è‚Ís‚í‚È‚¢B
+#if 0	// æ‹¡å¼µå­ã«ã‹ã‹ã‚ã‚‰ãšIsSupported()ãŒã‚³ãƒ¼ãƒ«ã•ã‚Œã‚‹ã¨ã€æ­£ã—ãåˆ¤å®šã§ããªã„ã®ã§æ–‡å­—ã‚³ãƒ¼ãƒ‰ã®åˆ¤å®šã¯è¡Œã‚ãªã„ã€‚
 		const BYTE*	pPathList = nullptr;
-		if (HIWORD(dw)) // ƒoƒbƒtƒ@‚Ö‚Ìƒ|ƒCƒ“ƒ^
+		if (HIWORD(dw)) // ãƒãƒƒãƒ•ã‚¡ã¸ã®ãƒã‚¤ãƒ³ã‚¿
 		{
 			pPathList = (const BYTE*)dw;
 
@@ -330,7 +330,7 @@ int __stdcall IsSupported(LPSTR filename, DWORD dw)
 			if (detectEncoding(pPathList, 2048))
 				return TRUE;
 		}
-		else // ƒtƒ@ƒCƒ‹ƒnƒ“ƒhƒ‹
+		else // ãƒ•ã‚¡ã‚¤ãƒ«ãƒãƒ³ãƒ‰ãƒ«
 		{
 			HANDLE hFile = (HANDLE)dw;
 
@@ -478,7 +478,7 @@ int __stdcall GetArchiveInfo(LPCSTR buf, long len, unsigned int flag, HLOCAL * l
 	if (lphInf == nullptr)
 		return SPI_INTERNAL_ERR;
 	if (flag & 0b000111)
-		return SPI_NOT_IMPLEMENT;	// ƒƒ‚ƒŠã‚ÌƒCƒ[ƒW‚É‚Í‘Î‰‚µ‚È‚¢
+		return SPI_NOT_IMPLEMENT;	// ãƒ¡ãƒ¢ãƒªä¸Šã®ã‚¤ãƒ¡ãƒ¼ã‚¸ã«ã¯å¯¾å¿œã—ãªã„
 
 	try
 	{
@@ -509,7 +509,7 @@ int __stdcall GetFileInfo(LPCSTR buf, long len, LPSTR filename, unsigned int fla
 	if (lpInfo == nullptr || buf == nullptr)
 		return SPI_INTERNAL_ERR;
 	if (flag & 0b000111)
-		return SPI_NOT_IMPLEMENT;	// ƒƒ‚ƒŠã‚ÌƒCƒ[ƒW‚É‚Í‘Î‰‚µ‚È‚¢
+		return SPI_NOT_IMPLEMENT;	// ãƒ¡ãƒ¢ãƒªä¸Šã®ã‚¤ãƒ¡ãƒ¼ã‚¸ã«ã¯å¯¾å¿œã—ãªã„
 
 	try
 	{
@@ -518,7 +518,7 @@ int __stdcall GetFileInfo(LPCSTR buf, long len, LPSTR filename, unsigned int fla
 			auto position = 0;
 			if (context.useFileName)
 			{
-				//æ“ª‚ÌƒfƒBƒŒƒNƒgƒŠ–¼‚ğƒCƒ“ƒfƒbƒNƒX‚É‚·‚é
+				//å…ˆé ­ã®ãƒ‡ã‚£ãƒ¬ã‚¯ãƒˆãƒªåã‚’ã‚¤ãƒ³ãƒ‡ãƒƒã‚¯ã‚¹ã«ã™ã‚‹
 				position = atol(filename) - 1;
 			}
 			else
@@ -566,7 +566,7 @@ int __stdcall GetFile(LPCSTR buf, long len, LPSTR dest, unsigned int flag, FARPR
 	if (buf == nullptr || dest == nullptr)
 		return SPI_INTERNAL_ERR;
 	if (flag & 0b000111)
-		return SPI_NOT_IMPLEMENT;	// ƒƒ‚ƒŠã‚ÌƒCƒ[ƒW‚É‚Í‘Î‰‚µ‚È‚¢
+		return SPI_NOT_IMPLEMENT;	// ãƒ¡ãƒ¢ãƒªä¸Šã®ã‚¤ãƒ¡ãƒ¼ã‚¸ã«ã¯å¯¾å¿œã—ãªã„
 
 	try
 	{
@@ -583,7 +583,7 @@ int __stdcall GetFile(LPCSTR buf, long len, LPSTR dest, unsigned int flag, FARPR
 			WCHAR path[MAX_PATH];
 			::PathCombine(path, parent.c_str(), fad.cFileName);
 
-			if (flag & 0b000011100000000) // ƒƒ‚ƒŠã‚ÌƒCƒ[ƒW 
+			if (flag & 0b000011100000000) // ãƒ¡ãƒ¢ãƒªä¸Šã®ã‚¤ãƒ¡ãƒ¼ã‚¸ 
 			{
 				if (fad.nFileSizeHigh > 0)
 				{
@@ -608,7 +608,7 @@ int __stdcall GetFile(LPCSTR buf, long len, LPSTR dest, unsigned int flag, FARPR
 				*reinterpret_cast<HLOCAL*>(dest) = hBuf;
 				ret = SPI_SUCCESS;
 			}
-			else // ƒfƒBƒXƒNƒtƒ@ƒCƒ‹ 
+			else // ãƒ‡ã‚£ã‚¹ã‚¯ãƒ•ã‚¡ã‚¤ãƒ« 
 			{
 				WCHAR newPath[MAX_PATH];
 				LPCWSTR ext = ::PathFindExtension(fad.cFileName);
