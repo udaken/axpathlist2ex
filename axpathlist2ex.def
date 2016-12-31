@@ -1,0 +1,7 @@
+LIBRARY	axpathlist2ex
+EXPORTS
+	GetPluginInfo
+	IsSupported
+	GetArchiveInfo
+	GetFileInfo
+	GetFile
