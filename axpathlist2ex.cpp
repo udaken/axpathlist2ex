@@ -22,105 +22,18 @@
 #include <functional> 
 #include <fstream>
 
-#define CP_932 932
+#include "optional.hpp"
+#include "utility.hpp"
+
 #define CP_UNICODE 1200
 
 const static BYTE UFT8_BOM[] = { 0xEF,0xBB,0xBF };
 const static BYTE UFT16LE_BOM[] = { 0xFF,0xFE };
 
-
 _COM_SMARTPTR_TYPEDEF(IMultiLanguage2, __uuidof(IMultiLanguage2));
 
 extern HMODULE g_hModule;
 
-class bad_optional_access : public std::logic_error
-{
-public:
-	bad_optional_access(const char*msg)
-		: logic_error(msg)
-	{
-
-	}
-};
-template <class T>
-class optional : public std::tuple<bool, T>
-{
-private:
-	typedef std::tuple<bool, T> base;
-public:
-	typedef T value_type;
-
-	optional(const T &value)
-		: base(true, value)
-	{
-	}
-	optional()
-		: base(false, {})
-	{
-	}
-	optional(const base& value)
-		: base(value)
-	{
-	}
-	bool has_value() const
-	{
-		return std::get<0>(*this);
-	}
-	explicit operator bool() const
-	{
-		return has_value();
-	}
-	T& value() &
-	{
-		if (!has_value())
-			throw bad_optional_access("object hasn't value");
-		return std::get<1>(*this);
-	}
-	const T & value() const &
-	{
-		if (!has_value())
-			throw bad_optional_access("object hasn't value");
-		return std::get<1>(*this);
-	}
-	const T* operator->() const
-	{
-		if (!has_value())
-			throw bad_optional_access("object hasn't value");
-		return &get<1>();
-	}
-	T* operator->()
-	{
-		if (!has_value())
-			throw bad_optional_access("object hasn't value");
-		return &get<1>();
-	}
-	const T& operator*() const&
-	{
-		return value();
-	}
-	T& operator*() &
-	{
-		return value();
-	}
-};
-template <class T>
-static inline void ltrim(std::basic_string<T> &s) {
-	s.erase(s.begin(), std::find_if(s.begin(), s.end(),
-		std::not1(std::ptr_fun<int, int>(std::isspace))));
-}
-
-template <class T = char>
-T *strnchr(const T *s, size_t count, T c)
-{
-	for (; count-- && *s != '\0'; ++s)
-	{
-		if (*s == c)
-		{
-			return const_cast<T*>(s);
-		}
-	}
-	return nullptr;
-}
 // エラーコード
 #define SPI_SUCCESS			0		// 正常終了
 #define SPI_NOT_IMPLEMENT	(-1)	// その機能はインプリメントされていない
@@ -148,31 +61,25 @@ struct fileInfo
 };
 #include <poppack.h>
 
-static std::string w2string(LPCWSTR lpszStr, DWORD dwFlags = WC_NO_BEST_FIT_CHARS)
+enum class SpiResult
 {
-	size_t bufLen = wcslen(lpszStr) * 2 + 1;
-	std::vector<CHAR> buf(bufLen, '\0');
-	int ret = ::WideCharToMultiByte(CP_ACP, dwFlags, lpszStr, -1, buf.data(), bufLen, nullptr, nullptr);
-	if (ret == 0 && ::GetLastError() == ERROR_INSUFFICIENT_BUFFER)
-	{
-		buf.reserve(buf.capacity() + 256);
-		::WideCharToMultiByte(CP_ACP, dwFlags, lpszStr, -1, buf.data(), bufLen, nullptr, nullptr);
-	}
-	return buf.data();
-}
+	Success = SPI_SUCCESS,
+	NotImplement = SPI_NOT_IMPLEMENT,
+	UserCancel = SPI_USER_CANCEL,
+	UnknownFormat = SPI_UNKNOWN_FORMAT,
+	DataBroken = SPI_DATA_BROKEN,
+	NoMemory = SPI_NO_MEMORY,
+	MemoryError = SPI_MEMORY_ERR,
+	FileReadError = SPI_FILE_READ_ERR,
+	Resered = SPI_RESERVED_ERR,
+	InternalError = SPI_INTERNAL_ERR,
+};
 
-static std::wstring a2wstring(LPCSTR lpszStr, DWORD dwFlags = 0)
+enum class Action
 {
-	size_t bufLen = strlen(lpszStr) + 1;
-	std::vector<WCHAR> buf(bufLen, L'\0');
-	int ret = ::MultiByteToWideChar(CP_ACP, dwFlags, lpszStr, -1, buf.data(), bufLen);
-	if (ret == 0 && ::GetLastError() == ERROR_INSUFFICIENT_BUFFER)
-	{
-		buf.reserve(buf.capacity() + 256);
-		::MultiByteToWideChar(CP_ACP, dwFlags, lpszStr, -1, buf.data(), bufLen);
-	}
-	return buf.data();
-}
+	Break,
+	Continue,
+};
 
 class Config
 {
@@ -194,14 +101,13 @@ public:
 	{
 		return ::GetPrivateProfileInt(TEXT("AXPATHLIST2EX"), TEXT("OVERRIDE_CODEPAGE"), CP_ACP, _path.c_str());
 	}
+	BOOL getUseFilename() const
+	{
+		return ::GetPrivateProfileInt(TEXT("AXPATHLIST2EX"), TEXT("USE_FILENAME"), 0, _path.c_str());
+	}
 private:
 	std::wstring _path;
 };
-
-
-//////////////////////////////////////////////////////////////////////////////
-// Plug-in API
-//////////////////////////////////////////////////////////////////////////////
 
 int __stdcall GetPluginInfo(int infono, LPSTR buf, int buflen)
 {
@@ -223,7 +129,6 @@ int __stdcall GetPluginInfo(int infono, LPSTR buf, int buflen)
 	return 0;
 }
 
-
 static optional<UINT> codePageFromName(LPCWSTR name, IMultiLanguage2 *pIML2)
 {
 	MIMECSETINFO mimeInfo;
@@ -234,7 +139,6 @@ static optional<UINT> codePageFromName(LPCWSTR name, IMultiLanguage2 *pIML2)
 	}
 
 }
-
 
 static optional<UINT> detectEncoding(const BYTE *input, size_t len)
 {
@@ -298,12 +202,15 @@ static std::wifstream openText(LPCSTR path)
 	{
 	case CP_UTF8:
 		file.imbue(std::locale(std::locale(""), new std::codecvt_utf8_utf16<wchar_t, 0x10ffff, std::consume_header>()));
-		break;
+		break;	
 	case CP_UNICODE:
 		file.imbue(std::locale(std::locale(""), new std::codecvt_utf16<wchar_t, 0x10ffff, static_cast<std::codecvt_mode>(std::little_endian | std::consume_header)>));
 		break;
-	default:
+	case CP_ACP:
 		file.imbue(std::locale(std::locale("", LC_CTYPE)));
+		break;
+	default:
+		file.imbue(std::locale(std::locale("." + std::to_string(encoding.value()), LC_CTYPE)));
 	}
 
 	return std::move(file);
@@ -383,18 +290,13 @@ static bool processDirective(LPCWSTR path, Context &context)
 	return true;
 }
 
-enum class Action
-{
-	Break,
-	Continue,
-};
 
 template<class TCallback>
-static int iterateArchive(LPCSTR buf, TCallback callback)
+static SpiResult iterateArchive(LPCSTR buf, TCallback callback)
 {
 	Config config;
 	Context context;
-	context.useFileName = true;
+	context.useFileName = config.getUseFilename() != 0;
 
 	auto file = openText(buf);
 
@@ -437,9 +339,9 @@ static int iterateArchive(LPCSTR buf, TCallback callback)
 			break;
 	}
 	if (file.fail())
-		return SPI_FILE_READ_ERR;
+		return SpiResult::FileReadError;
 
-	return SPI_SUCCESS;
+	return SpiResult::Success;
 }
 
 static fileInfo findData2FileInfo(Context &context, size_t index, const WIN32_FIND_DATA &fad)
@@ -483,7 +385,7 @@ int __stdcall GetArchiveInfo(LPCSTR buf, long len, unsigned int flag, HLOCAL * l
 	try
 	{
 		std::vector<fileInfo> list;
-		int ret = iterateArchive(buf, [&](Context &context, size_t index, const std::wstring &parent, const WIN32_FIND_DATA &fad)
+		SpiResult ret = iterateArchive(buf, [&](Context &context, size_t index, const std::wstring &parent, const WIN32_FIND_DATA &fad)
 		{
 			list.push_back(findData2FileInfo(context, index, fad));
 
@@ -513,7 +415,7 @@ int __stdcall GetFileInfo(LPCSTR buf, long len, LPSTR filename, unsigned int fla
 
 	try
 	{
-		int ret = iterateArchive(buf, [&](Context &context, size_t index, const std::wstring &parent, const WIN32_FIND_DATA &fad)
+		SpiResult ret = iterateArchive(buf, [&](Context &context, size_t index, const std::wstring &parent, const WIN32_FIND_DATA &fad)
 		{
 			auto position = 0;
 			if (context.useFileName)
@@ -541,26 +443,6 @@ int __stdcall GetFileInfo(LPCSTR buf, long len, LPSTR filename, unsigned int fla
 		return SPI_INTERNAL_ERR;
 	}
 }
-
-static BOOL readAllBytes(LPCWSTR path, LPVOID data, SIZE_T size)
-{
-	auto hFile = ::CreateFile(path, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-	if (hFile == INVALID_HANDLE_VALUE)
-	{
-		return FALSE;
-	}
-
-	DWORD dwNumberOfBytesRead;
-	if (!::ReadFile(hFile, data, size, &dwNumberOfBytesRead, nullptr) || dwNumberOfBytesRead != dwNumberOfBytesRead)
-	{
-		::CloseHandle(hFile);
-		return FALSE;
-	}
-
-	::CloseHandle(hFile);
-	return TRUE;
-}
-
 int __stdcall GetFile(LPCSTR buf, long len, LPSTR dest, unsigned int flag, FARPROC progressCallback, long lData)
 {
 	if (buf == nullptr || dest == nullptr)

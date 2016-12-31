@@ -160,8 +160,10 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="optional.hpp" />
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="targetver.h" />
+    <ClInclude Include="utility.hpp" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="axpathlist2ex.cpp" />
