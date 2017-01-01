@@ -1,4 +1,8 @@
-﻿#include "stdafx.h"
+﻿#include "targetver.h"
+
+#define WIN32_LEAN_AND_MEAN             // Windows ヘッダーから使用されていない部分を除外します。
+#define STRICT
+#define STRICT_CONST
 
 #include <windows.h>
 #include <comip.h>
@@ -54,7 +58,7 @@ struct fileInfo
 	unsigned long	position;		// ファイル上での位置
 	unsigned long	compsize;		// 圧縮されたサイズ
 	unsigned long	filesize;		// 元のファイルサイズ
-	time_t			timestamp;		// ファイルの更新日時
+	__time32_t		timestamp;		// ファイルの更新日時
 	char			path[200];		// 相対パス
 	char			filename[200];	// ファイルネーム
 	unsigned long	crc;			// CRC
@@ -201,10 +205,12 @@ static std::wifstream openText(LPCSTR path)
 	switch (encoding.value())
 	{
 	case CP_UTF8:
-		file.imbue(std::locale(std::locale(""), new std::codecvt_utf8_utf16<wchar_t, 0x10ffff, std::consume_header>()));
+		file.imbue(std::locale(std::locale(""),
+			new std::codecvt_utf8_utf16<wchar_t, 0x10ffff, std::consume_header>()));
 		break;	
 	case CP_UNICODE:
-		file.imbue(std::locale(std::locale(""), new std::codecvt_utf16<wchar_t, 0x10ffff, static_cast<std::codecvt_mode>(std::little_endian | std::consume_header)>));
+		file.imbue(std::locale(std::locale(""),
+			new std::codecvt_utf16<wchar_t, 0x10ffff, static_cast<std::codecvt_mode>(std::little_endian | std::consume_header)>));
 		break;
 	case CP_ACP:
 		file.imbue(std::locale(std::locale("", LC_CTYPE)));
@@ -347,7 +353,7 @@ static SpiResult iterateArchive(LPCSTR buf, TCallback callback)
 static fileInfo findData2FileInfo(Context &context, size_t index, const WIN32_FIND_DATA &fad)
 {
 	ULARGE_INTEGER uli = { fad.ftLastWriteTime.dwLowDateTime, fad.ftLastWriteTime.dwHighDateTime };
-	time_t		timestamp = (time_t)((uli.QuadPart - 0x19DB1DED53E8000) / 10000000);
+	auto timestamp = (__time32_t)((uli.QuadPart - 0x19DB1DED53E8000) / 10000000);
 
 	fileInfo fi = {};
 	fi.position = index;
@@ -427,6 +433,7 @@ int __stdcall GetFileInfo(LPCSTR buf, long len, LPSTR filename, unsigned int fla
 			{
 				position = atol(::PathFindFileNameA(filename)) - 1;
 			}
+
 			if (index == position)
 			{
 				auto fi = findData2FileInfo(context, index, fad);
@@ -510,4 +517,23 @@ int __stdcall GetFile(LPCSTR buf, long len, LPSTR dest, unsigned int flag, FARPR
 	return 0;
 }
 
+HMODULE g_hModule = nullptr;
+
+BOOL APIENTRY DllMain(HMODULE hModule,
+	DWORD  ul_reason_for_call,
+	LPVOID lpReserved
+)
+{
+	switch (ul_reason_for_call)
+	{
+	case DLL_PROCESS_ATTACH:
+		g_hModule = hModule;
+		break;
+	case DLL_THREAD_ATTACH:
+	case DLL_THREAD_DETACH:
+	case DLL_PROCESS_DETACH:
+		break;
+	}
+	return TRUE;
+}
 
