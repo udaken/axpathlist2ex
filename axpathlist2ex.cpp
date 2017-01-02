@@ -95,20 +95,24 @@ public:
         ::PathRenameExtension(buf, TEXT(".ini"));
         _path = buf;
     }
+
     std::string getExtension() const
     {
         WCHAR buf[256];
         ::GetPrivateProfileString(TEXT("AXPATHLIST2EX"), TEXT("EXTENSION"), TEXT("*.sz7"), buf, _countof(buf), _path.c_str());
         return w2string(buf);
     }
+
     UINT getOverrideCodePage() const
     {
         return ::GetPrivateProfileInt(TEXT("AXPATHLIST2EX"), TEXT("OVERRIDE_CODEPAGE"), CP_ACP, _path.c_str());
     }
+
     BOOL getUseFilename() const
     {
         return ::GetPrivateProfileInt(TEXT("AXPATHLIST2EX"), TEXT("USE_FILENAME"), 0, _path.c_str());
     }
+
 private:
     std::wstring _path;
 };
@@ -379,36 +383,45 @@ static SpiResult iterateArchive(LPCSTR buf, TCallback callback)
         wcscpy_s(parent, path);
         ::PathRemoveFileSpec(parent);
 
-        auto action = Action::Continue;
-        WIN32_FIND_DATA fad = {};
+		std::vector<WIN32_FIND_DATA> files;
+		auto action = Action::Continue;
+		{
+			WIN32_FIND_DATA fad = {};
+			if (HANDLE hFind = ::FindFirstFile(path, &fad))
+			{
+				do
+				{
+					if (wcscmp(fad.cFileName, L".") == 0 || wcscmp(fad.cFileName, L"..") == 0)
+					{
+						continue;
+					}
 
-        if (HANDLE hFind = ::FindFirstFile(path, &fad))
-        {
-            do
-            {
-                if (wcscmp(fad.cFileName, L".") == 0 || wcscmp(fad.cFileName, L"..") == 0)
-                {
-                    continue;
-                }
+					if (fad.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+					{
+						continue;
+					}
 
-                if (fad.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
-                {
-                    continue;
-                }
+					files.push_back(fad);
+				} while (::FindNextFile(hFind, &fad));
 
-                action = callback(context, cnt, parent, fad);
+				::FindClose(hFind);
+			}
+		}
 
-                if (Action::Break == action)
-                {
-                    break;
-                }
+		std::stable_sort(files.begin(), files.end(), [](const WIN32_FIND_DATA &left, const WIN32_FIND_DATA &right) {
+			return _wcsicmp(left.cFileName, right.cFileName) < 0;
+		});
 
-                cnt++;
-            }
-            while (::FindNextFile(hFind, &fad));
+		for(const auto fad : files)
+		{
+			action = callback(context, cnt, parent, fad);
 
-            ::FindClose(hFind);
-        }
+			if (Action::Break == action)
+			{
+				break;
+			}
+			cnt++;
+		}
 
         if (action == Action::Break)
         {
@@ -438,7 +451,6 @@ static fileInfo findData2FileInfo(Context &context, size_t index, const WIN32_FI
     if (context.useFileName)
     {
         sprintf_s(fi.path, "%09u\\", index + 1);
-
         ::WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS,
                               fad.cFileName, -1, fi.filename, _countof(fi.filename), NULL, NULL);
     }
@@ -598,9 +610,15 @@ int __stdcall GetFile(LPCSTR buf, long len, LPSTR dest, unsigned int flag, FARPR
             else // ディスクファイル
             {
                 WCHAR newPath[MAX_PATH];
-                LPCWSTR ext = ::PathFindExtension(fad.cFileName);
-                swprintf_s(newPath, L"%S\\%09u%s", dest, index + 1, ext ? ext : L"");
-
+				if (context.useFileName)
+				{
+					swprintf_s(newPath, L"%S\\%s", dest, fad.cFileName);
+				}
+				else
+				{
+					LPCWSTR ext = ::PathFindExtension(fad.cFileName);
+					swprintf_s(newPath, L"%S\\%09u%s", dest, index + 1, ext ? ext : L"");
+				}
                 ret = ::CopyFile(path, newPath, FALSE) ? SPI_SUCCESS : SPI_FILE_READ_ERR;
             }
 
