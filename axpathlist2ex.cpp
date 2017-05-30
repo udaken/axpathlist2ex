@@ -327,6 +327,7 @@ struct Context
 	}
 	bool useFileName;
 	std::wstring relativePath;
+	const char defaultChar = ' ';
 };
 
 #define DIRECTIVE_DIRECTORY L"|directory:"
@@ -353,13 +354,13 @@ static bool processDirective(LPCWSTR path, Context &context)
 
 
 template<class TCallback>
-static SpiResult iterateArchive(LPCSTR buf, TCallback callback)
+static SpiResult iterateArchive(LPCSTR inputFilePath, TCallback callback)
 {
 	Config config;
 	Context context;
 	context.useFileName = config.getUseFilename() != 0;
 
-	auto file = openText(buf);
+	auto file = openText(inputFilePath);
 
 	for (size_t cnt = 0; file.good() && cnt <= UINT32_MAX;)
 	{
@@ -380,7 +381,7 @@ static SpiResult iterateArchive(LPCSTR buf, TCallback callback)
 
 		if (::PathIsRelative(line.c_str()))
 		{
-			wcscpy_s(path, a2wstring(buf).c_str());
+			wcscpy_s(path, a2wstring(inputFilePath).c_str());
 			::PathRemoveFileSpec(path);
 			::PathCombine(path, path, line.c_str());
 		}
@@ -470,7 +471,7 @@ static fileInfo findData2FileInfo(Context &context, DWORD index, const WIN32_FIN
 		strcat_s(fi.path, buf);
 
 		::WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS,
-			fad.cFileName, -1, fi.filename, _countof(fi.filename), NULL, NULL);
+			fad.cFileName, -1, fi.filename, _countof(fi.filename), &context.defaultChar, NULL);
 	}
 	else
 	{
@@ -576,6 +577,7 @@ int __stdcall GetFileInfo(LPCSTR buf, long len, LPSTR filename, unsigned int fla
 		return SPI_INTERNAL_ERR;
 	}
 }
+
 int __stdcall GetFile(LPCSTR buf, long len, LPSTR dest, unsigned int flag, FARPROC /*progressCallback*/, long /*lData*/)
 {
 	if (buf == nullptr || dest == nullptr)
@@ -646,7 +648,10 @@ int __stdcall GetFile(LPCSTR buf, long len, LPSTR dest, unsigned int flag, FARPR
 					LPCWSTR ext = ::PathFindExtension(fad.cFileName);
 					swprintf_s(newPath, L"%S\\%09u%s", dest, index + 1, ext ? ext : L"");
 				}
-				ret = ::CopyFile(path, newPath, FALSE) ? SPI_SUCCESS : SPI_FILE_READ_ERR;
+
+				auto work = w2string(newPath, WC_NO_BEST_FIT_CHARS, &context.defaultChar);
+				
+				ret = ::CopyFile(path, a2wstring(work.c_str()).c_str(), FALSE) ? SPI_SUCCESS : SPI_FILE_READ_ERR;
 			}
 
 			return Action::Break;
