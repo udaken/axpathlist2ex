@@ -214,6 +214,7 @@ static optional<UINT> detectEncoding(const BYTE *input, size_t len)
 	}
 
 #endif
+	UNREFERENCED_PARAMETER(len);
 	return CP_ACP;
 }
 
@@ -307,6 +308,8 @@ int __stdcall IsSupported(LPSTR filename, DWORD dw)
 			}
 
 		}
+#else
+	UNREFERENCED_PARAMETER(dw);
 #endif
 		return FALSE;
 	}
@@ -436,7 +439,7 @@ static SpiResult iterateArchive(LPCSTR buf, TCallback callback)
 		}
 	}
 
-	if (file.fail())
+	if (!file.eof())
 	{
 		return SpiResult::FileReadError;
 	}
@@ -501,6 +504,9 @@ int __stdcall GetArchiveInfo(LPCSTR buf, long len, unsigned int flag, HLOCAL * l
 			return Action::Continue;
 		});
 
+		if (ret != SpiResult::Success)
+			return static_cast<int>(ret);
+
 		*lphInf = ::LocalAlloc(LPTR, sizeof(fileInfo) * (list.size() + 1));
 
 		if (nullptr == *lphInf)
@@ -534,7 +540,7 @@ int __stdcall GetFileInfo(LPCSTR buf, long len, LPSTR filename, unsigned int fla
 	{
 		SpiResult ret = iterateArchive(buf, [&](Context & context, size_t index, const std::wstring & parent, const WIN32_FIND_DATA & fad)
 		{
-			auto position = 0;
+			auto position = 0u;
 
 			unsigned char* sepPos = _mbschr((unsigned char*)filename, '\\');
 			LPCSTR positionStr = nullptr;
@@ -552,7 +558,7 @@ int __stdcall GetFileInfo(LPCSTR buf, long len, LPSTR filename, unsigned int fla
 				positionStr = ::PathFindFileNameA(filename);
 			}
 
-			position = atol(positionStr) - 1;
+			position = strtoul(positionStr, nullptr, 10) - 1;
 
 			if (index == position)
 			{
@@ -563,8 +569,7 @@ int __stdcall GetFileInfo(LPCSTR buf, long len, LPSTR filename, unsigned int fla
 
 			return Action::Continue;
 		});
-
-		return SPI_SUCCESS;
+		return static_cast<int>(ret);
 	}
 	catch (const std::exception &)
 	{
@@ -653,8 +658,6 @@ int __stdcall GetFile(LPCSTR buf, long len, LPSTR dest, unsigned int flag, FARPR
 	{
 		return SPI_INTERNAL_ERR;
 	}
-
-	return 0;
 }
 
 HMODULE g_hModule = nullptr;
