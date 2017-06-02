@@ -309,7 +309,7 @@ int __stdcall IsSupported(LPSTR filename, DWORD dw)
 
 		}
 #else
-	UNREFERENCED_PARAMETER(dw);
+		UNREFERENCED_PARAMETER(dw);
 #endif
 		return FALSE;
 	}
@@ -362,7 +362,7 @@ static SpiResult iterateArchive(LPCSTR inputFilePath, TCallback callback)
 
 	auto file = openText(inputFilePath);
 
-	for (size_t cnt = 0; file.good() && cnt <= UINT32_MAX;)
+	for (UINT32 cnt = 0; file.good() && cnt <= UINT32_MAX;)
 	{
 		std::wstring line;
 		std::getline(file, line);
@@ -497,10 +497,10 @@ int __stdcall GetArchiveInfo(LPCSTR buf, long len, unsigned int flag, HLOCAL * l
 	try
 	{
 		std::vector<fileInfo> list;
-		SpiResult ret = iterateArchive(buf, [&](Context & context, size_t index, const std::wstring & parent, const WIN32_FIND_DATA & fad)
+		SpiResult ret = iterateArchive(buf, [&](Context & context, UINT32 index, const std::wstring &, const WIN32_FIND_DATA & fad)
 		{
 			assert(index <= UINT32_MAX);
-			list.push_back(findData2FileInfo(context, static_cast<DWORD>(index), fad));
+			list.push_back(findData2FileInfo(context, index, fad));
 
 			return Action::Continue;
 		});
@@ -539,7 +539,7 @@ int __stdcall GetFileInfo(LPCSTR buf, long len, LPSTR filename, unsigned int fla
 
 	try
 	{
-		SpiResult ret = iterateArchive(buf, [&](Context & context, size_t index, const std::wstring & parent, const WIN32_FIND_DATA & fad)
+		SpiResult ret = iterateArchive(buf, [&](Context & context, UINT32 index, const std::wstring &, const WIN32_FIND_DATA & fad)
 		{
 			auto position = 0u;
 
@@ -595,12 +595,8 @@ int __stdcall GetFile(LPCSTR buf, long len, LPSTR dest, unsigned int flag, FARPR
 		size_t position = len;
 		int ret = SPI_INTERNAL_ERR;
 
-		iterateArchive(buf, [&](Context & context, size_t i, const std::wstring & parent, const WIN32_FIND_DATA & fad)
+		iterateArchive(buf, [&](Context & context, UINT32 index, const std::wstring & parent, const WIN32_FIND_DATA & fad)
 		{
-			if (i > UINT32_MAX)
-				return Action::Break;
-
-			DWORD index = static_cast<UINT32>(i);
 			if (index != position)
 			{
 				return Action::Continue;
@@ -650,7 +646,7 @@ int __stdcall GetFile(LPCSTR buf, long len, LPSTR dest, unsigned int flag, FARPR
 				}
 
 				auto work = w2string(newPath, WC_NO_BEST_FIT_CHARS, &context.defaultChar);
-				
+
 				ret = ::CopyFile(path, a2wstring(work.c_str()).c_str(), FALSE) ? SPI_SUCCESS : SPI_FILE_READ_ERR;
 			}
 
