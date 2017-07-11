@@ -1,4 +1,3 @@
-LIBRARY	axpathlist2ex.spi
 EXPORTS
 	GetPluginInfo
 	IsSupported

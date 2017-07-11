@@ -30,14 +30,18 @@
 #include "optional.hpp"
 #include "utility.hpp"
 
+#include "VersionHelpers.h"
+
 #define CP_UNICODE 1200
 
 const static BYTE UFT8_BOM[] = { 0xEF, 0xBB, 0xBF };
 const static BYTE UFT16LE_BOM[] = { 0xFF, 0xFE };
 
-_COM_SMARTPTR_TYPEDEF(IMultiLanguage2, __uuidof(IMultiLanguage2));
+static bool g_isWindows7OrHigher = false;
 
-extern HMODULE g_hModule;
+static HMODULE g_hModule = nullptr;
+
+_COM_SMARTPTR_TYPEDEF(IMultiLanguage2, __uuidof(IMultiLanguage2));
 
 // エラーコード
 #define SPI_SUCCESS			0		// 正常終了
@@ -76,6 +80,21 @@ struct fileInfo
 #endif
 };
 #include <poppack.h>
+
+struct fileInfoW
+{
+	unsigned char	method[8];		// 圧縮法の種類
+	ULONG_PTR		position;		// ファイル上での位置
+	ULONG_PTR		compsize;		// 圧縮されたサイズ
+	ULONG_PTR		filesize;		// 元のファイルサイズ
+	susie_time_t	timestamp;		// ファイルの更新日時
+	WCHAR			path[200];		// 相対パス
+	WCHAR			filename[200];	// ファイルネーム
+	unsigned long	crc;			// CRC
+#ifdef _WIN64
+	char        dummy[4];
+#endif
+};
 
 enum class SpiResult
 {
@@ -124,11 +143,23 @@ public:
 	{
 		return ::GetPrivateProfileInt(TEXT("AXPATHLIST2EX"), TEXT("USE_FILENAME"), 0, _path.c_str());
 	}
+	BOOL getIsRecursive() const
+	{
+		return TRUE;
+	}
 
 private:
 	std::wstring _path;
 };
 
+int __stdcall GetPluginInfoW(int infono, LPWSTR buf, int buflen)
+{
+	return 0;
+
+	UNREFERENCED_PARAMETER(infono);
+	UNREFERENCED_PARAMETER(buf);
+	UNREFERENCED_PARAMETER(buflen);
+}
 int __stdcall GetPluginInfo(int infono, LPSTR buf, int buflen)
 {
 	if (buf == NULL || buflen <= 0)
@@ -145,7 +176,7 @@ int __stdcall GetPluginInfo(int infono, LPSTR buf, int buflen)
 	}
 	else if (infono == 1)
 	{
-		return static_cast<int>(::strlen(::lstrcpynA(buf, "axpathlist2ex", buflen)));
+		return static_cast<int>(::strlen(::lstrcpynA(buf, "axpathlist2ex build at "  __TIMESTAMP__, buflen)));
 	}
 	else if (infono == 2)
 	{
@@ -181,12 +212,11 @@ static optional<UINT> detectEncoding(const BYTE *input, size_t len)
 		return cp;
 	}
 
-	optional<UINT> o;
-	if (memcmp(input, UFT8_BOM, _countof(UFT8_BOM)) == 0)
+	if (len >= _countof(UFT8_BOM) && memcmp(input, UFT8_BOM, _countof(UFT8_BOM)) == 0)
 	{
 		return CP_UTF8;
 	}
-	else if (memcmp(input, UFT16LE_BOM, _countof(UFT16LE_BOM)) == 0)
+	else if (len >= _countof(UFT16LE_BOM) && memcmp(input, UFT16LE_BOM, _countof(UFT16LE_BOM)) == 0)
 	{
 		return CP_UNICODE;
 	}
@@ -262,8 +292,14 @@ static std::wifstream openText(LPCSTR path)
 
 	return file;
 }
+int __stdcall IsSupportedW(LPWSTR filename, void* dw)
+{
+	UNREFERENCED_PARAMETER(filename);
+	UNREFERENCED_PARAMETER(dw);
 
-int __stdcall IsSupported(LPSTR filename, DWORD dw)
+	return FALSE;
+}
+int __stdcall IsSupported(LPSTR filename, void* dw)
 {
 	try
 	{
@@ -317,8 +353,8 @@ int __stdcall IsSupported(LPSTR filename, DWORD dw)
 	{
 		return FALSE;
 	}
-
 }
+
 struct Context
 {
 	Context()
@@ -328,6 +364,10 @@ struct Context
 	bool useFileName;
 	std::wstring relativePath;
 	const char defaultChar = ' ';
+	std::function<bool(const WIN32_FIND_DATA &left, const WIN32_FIND_DATA &right)> sortFunc = [](const WIN32_FIND_DATA &left, const WIN32_FIND_DATA &right)
+	{
+		return ::StrCmpLogicalW(left.cFileName, right.cFileName) < 0;
+	};
 };
 
 #define DIRECTIVE_DIRECTORY L"|directory:"
@@ -352,6 +392,40 @@ static bool processDirective(LPCWSTR path, Context &context)
 	return true;
 }
 
+void iterateArchiveInner(Config &/*config*/, LPCWSTR path, std::vector<WIN32_FIND_DATA> &files)
+{
+	WIN32_FIND_DATA fad = {};
+	auto infoLevel = g_isWindows7OrHigher ? FindExInfoBasic : FindExInfoStandard;
+	DWORD dwAdditionalFlags = g_isWindows7OrHigher ? FIND_FIRST_EX_LARGE_FETCH : 0;
+	if (HANDLE hFind = ::FindFirstFileEx(path, infoLevel, &fad, FindExSearchNameMatch, NULL, dwAdditionalFlags))
+	{
+		do
+		{
+			if (wcscmp(fad.cFileName, L".") == 0 || wcscmp(fad.cFileName, L"..") == 0)
+			{
+				continue;
+			}
+
+			if (fad.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+			{
+				continue;
+			}
+#ifndef _WIN64
+			else if (fad.nFileSizeHigh > 0)
+			{
+				continue;
+			}
+#endif
+			else
+			{
+				files.push_back(fad);
+			}
+
+		} while (::FindNextFile(hFind, &fad));
+
+		::FindClose(hFind);
+	}
+}
 
 template<class TCallback>
 static SpiResult iterateArchive(LPCSTR inputFilePath, TCallback callback)
@@ -395,34 +469,12 @@ static SpiResult iterateArchive(LPCSTR inputFilePath, TCallback callback)
 		::PathRemoveFileSpec(parent);
 
 		std::vector<WIN32_FIND_DATA> files;
+
+		iterateArchiveInner(config, path, files);
+
+		std::stable_sort(files.begin(), files.end(), context.sortFunc);
+
 		auto action = Action::Continue;
-		{
-			WIN32_FIND_DATA fad = {};
-			if (HANDLE hFind = ::FindFirstFile(path, &fad))
-			{
-				do
-				{
-					if (wcscmp(fad.cFileName, L".") == 0 || wcscmp(fad.cFileName, L"..") == 0)
-					{
-						continue;
-					}
-
-					if (fad.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
-					{
-						continue;
-					}
-
-					files.push_back(fad);
-				} while (::FindNextFile(hFind, &fad));
-
-				::FindClose(hFind);
-			}
-		}
-
-		std::stable_sort(files.begin(), files.end(), [](const WIN32_FIND_DATA &left, const WIN32_FIND_DATA &right) {
-			return StrCmpLogicalW(left.cFileName, right.cFileName) < 0;
-		});
-
 		for (const auto fad : files)
 		{
 			action = callback(context, cnt, parent, fad);
@@ -451,11 +503,12 @@ static SpiResult iterateArchive(LPCSTR inputFilePath, TCallback callback)
 static fileInfo findData2FileInfo(Context &context, DWORD index, const WIN32_FIND_DATA &fad)
 {
 	ULARGE_INTEGER uli = { fad.ftLastWriteTime.dwLowDateTime, fad.ftLastWriteTime.dwHighDateTime };
-	auto timestamp = (__time32_t)((uli.QuadPart - 0x19DB1DED53E8000) / 10000000);
+	auto timestamp = (__time32_t)((uli.QuadPart - 0x19DB1DED53E8000u) / 10000000);
 
 	fileInfo fi = {};
 	fi.position = index;
-	fi.compsize = fi.filesize = fad.nFileSizeLow;
+	ULARGE_INTEGER fileSize = { fad.nFileSizeLow , fad.nFileSizeHigh };
+	fi.compsize = fi.filesize = static_cast<ULONG_PTR>(fileSize.QuadPart);
 	fi.method[0] = 'a';
 	fi.timestamp = timestamp;
 
@@ -480,6 +533,16 @@ static fileInfo findData2FileInfo(Context &context, DWORD index, const WIN32_FIN
 	}
 
 	return fi;
+}
+
+int __stdcall GetArchiveInfoW(LPCWSTR buf, size_t len, unsigned int flag, HLOCAL* lphInf)
+{
+	return SPI_NOT_IMPLEMENT;
+
+	UNREFERENCED_PARAMETER(buf);
+	UNREFERENCED_PARAMETER(len);
+	UNREFERENCED_PARAMETER(flag);
+	UNREFERENCED_PARAMETER(lphInf);
 }
 
 int __stdcall GetArchiveInfo(LPCSTR buf, long len, unsigned int flag, HLOCAL * lphInf)
@@ -523,6 +586,19 @@ int __stdcall GetArchiveInfo(LPCSTR buf, long len, unsigned int flag, HLOCAL * l
 	{
 		return SPI_INTERNAL_ERR;
 	}
+
+	UNREFERENCED_PARAMETER(len);
+}
+
+int __stdcall GetFileInfoW(LPCWSTR buf, size_t len, LPCWSTR filename, unsigned int flag, fileInfoW* lpInfo)
+{
+	return SPI_NOT_IMPLEMENT;
+
+	UNREFERENCED_PARAMETER(buf);
+	UNREFERENCED_PARAMETER(len);
+	UNREFERENCED_PARAMETER(filename);
+	UNREFERENCED_PARAMETER(flag);
+	UNREFERENCED_PARAMETER(lpInfo);
 }
 
 int __stdcall GetFileInfo(LPCSTR buf, long len, LPSTR filename, unsigned int flag, fileInfo * lpInfo)
@@ -541,8 +617,6 @@ int __stdcall GetFileInfo(LPCSTR buf, long len, LPSTR filename, unsigned int fla
 	{
 		SpiResult ret = iterateArchive(buf, [&](Context & context, UINT32 index, const std::wstring &, const WIN32_FIND_DATA & fad)
 		{
-			auto position = 0u;
-
 			unsigned char* sepPos = _mbschr((unsigned char*)filename, '\\');
 			LPCSTR positionStr = nullptr;
 			if (!context.relativePath.empty() && sepPos)
@@ -559,7 +633,7 @@ int __stdcall GetFileInfo(LPCSTR buf, long len, LPSTR filename, unsigned int fla
 				positionStr = ::PathFindFileNameA(filename);
 			}
 
-			position = strtoul(positionStr, nullptr, 10) - 1;
+			auto position = strtoul(positionStr, nullptr, 10) - 1;
 
 			if (index == position)
 			{
@@ -576,9 +650,22 @@ int __stdcall GetFileInfo(LPCSTR buf, long len, LPSTR filename, unsigned int fla
 	{
 		return SPI_INTERNAL_ERR;
 	}
+	UNREFERENCED_PARAMETER(len);
 }
 
-int __stdcall GetFile(LPCSTR buf, long len, LPSTR dest, unsigned int flag, FARPROC /*progressCallback*/, long /*lData*/)
+int __stdcall GetFileW(LPCWSTR src, size_t len, LPWSTR dest, unsigned int flag, FARPROC progressCallback, intptr_t lData)
+{
+	return SPI_NOT_IMPLEMENT;
+
+	UNREFERENCED_PARAMETER(src);
+	UNREFERENCED_PARAMETER(len);
+	UNREFERENCED_PARAMETER(dest);
+	UNREFERENCED_PARAMETER(flag);
+	UNREFERENCED_PARAMETER(progressCallback);
+	UNREFERENCED_PARAMETER(lData);
+}
+
+int __stdcall GetFile(LPCSTR buf, long len, LPSTR dest, unsigned int flag, FARPROC /*progressCallback*/, intptr_t /*lData*/)
 {
 	if (buf == nullptr || dest == nullptr)
 	{
@@ -592,12 +679,11 @@ int __stdcall GetFile(LPCSTR buf, long len, LPSTR dest, unsigned int flag, FARPR
 
 	try
 	{
-		size_t position = len;
 		int ret = SPI_INTERNAL_ERR;
 
 		iterateArchive(buf, [&](Context & context, UINT32 index, const std::wstring & parent, const WIN32_FIND_DATA & fad)
 		{
-			if (index != position)
+			if (index != len)
 			{
 				return Action::Continue;
 			}
@@ -607,13 +693,8 @@ int __stdcall GetFile(LPCSTR buf, long len, LPSTR dest, unsigned int flag, FARPR
 
 			if (flag & 0b000011100000000)   // メモリ上のイメージ
 			{
-				if (fad.nFileSizeHigh > 0)
-				{
-					ret = SPI_NO_MEMORY;
-					return Action::Break;
-				}
-
-				HLOCAL hBuf = ::LocalAlloc(LPTR, fad.nFileSizeLow);
+				ULARGE_INTEGER fileSize = { fad.nFileSizeLow, fad.nFileSizeHigh };
+				HLOCAL hBuf = ::LocalAlloc(LPTR, static_cast<SIZE_T>(fileSize.QuadPart));
 
 				if (hBuf == nullptr)
 				{
@@ -621,7 +702,7 @@ int __stdcall GetFile(LPCSTR buf, long len, LPSTR dest, unsigned int flag, FARPR
 					return Action::Break;
 				}
 
-				if (!readAllBytes(path, hBuf, fad.nFileSizeLow))
+				if (!readAllBytes(path, hBuf, static_cast<size_t>(fileSize.QuadPart)))
 				{
 					::LocalFree(hBuf);
 					ret = SPI_FILE_READ_ERR;
@@ -634,20 +715,20 @@ int __stdcall GetFile(LPCSTR buf, long len, LPSTR dest, unsigned int flag, FARPR
 			}
 			else // ディスクファイル
 			{
-				WCHAR newPath[MAX_PATH];
+				WCHAR copyDestPath[MAX_PATH];
 				if (context.useFileName)
 				{
-					swprintf_s(newPath, L"%S\\%s", dest, fad.cFileName);
+					swprintf_s(copyDestPath, L"%S\\%s", dest, fad.cFileName);
 				}
 				else
 				{
 					LPCWSTR ext = ::PathFindExtension(fad.cFileName);
-					swprintf_s(newPath, L"%S\\%09u%s", dest, index + 1, ext ? ext : L"");
+					swprintf_s(copyDestPath, L"%S\\%09u%s", dest, index + 1, ext ? ext : L"");
 				}
 
-				auto work = w2string(newPath, WC_NO_BEST_FIT_CHARS, &context.defaultChar);
+				auto work = w2string(copyDestPath, WC_NO_BEST_FIT_CHARS, &context.defaultChar);
 
-				ret = ::CopyFile(path, a2wstring(work.c_str()).c_str(), FALSE) ? SPI_SUCCESS : SPI_FILE_READ_ERR;
+				ret = (::CopyFile(path, a2wstring(work.c_str()).c_str(), FALSE) ? SPI_SUCCESS : SPI_FILE_READ_ERR);
 			}
 
 			return Action::Break;
@@ -661,8 +742,6 @@ int __stdcall GetFile(LPCSTR buf, long len, LPSTR dest, unsigned int flag, FARPR
 	}
 }
 
-HMODULE g_hModule = nullptr;
-
 BOOL APIENTRY DllMain(HMODULE hModule,
 	DWORD  ul_reason_for_call,
 	LPVOID /*lpReserved*/
@@ -672,6 +751,7 @@ BOOL APIENTRY DllMain(HMODULE hModule,
 	{
 	case DLL_PROCESS_ATTACH:
 		g_hModule = hModule;
+		g_isWindows7OrHigher = IsWindows7OrGreater();
 		break;
 
 	case DLL_THREAD_ATTACH:
